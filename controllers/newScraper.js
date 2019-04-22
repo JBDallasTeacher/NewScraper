@@ -2,9 +2,9 @@
 var express = require("express");
 var mongoose = require("mongoose");
 
-//var logger = require("morgan");
+var logger = require("morgan");
 //var path = require("path");
-//var router = express.Router();
+var router = express.Router();
 var axios = require('axios');
 var cheerio = require('cheerio');
 
@@ -16,14 +16,13 @@ var db = require('../models/Index');
 
 // Routes
 // ======
-
 // Simple index route
-app.get("/", function (req, res) {
+router.get("/", function (req, res) {
     res.render('index');
 });
 
 //A GET route for scraping the cnn website
-app.get("/scrape", function (req, res) {
+router.get("/scrape", function (req, res) {
     axios.get('https://www.cnn.com/')
         .then(function (response) {
             var $ = cheerio.load(response.data);
@@ -35,14 +34,16 @@ app.get("/scrape", function (req, res) {
                 // Add the text and href of every link, and save them as properties of the result object
                 result.title = $(element)
 
-                    .children("a")
+                    //.children("a")
+                    //.text();
+                    .find('h2.esl82me2')
                     .text();
 
                 result.link =
                     'https://www.cnn.com' +
                     $(element)
-                        // .find('a')
-                        .children("a")
+                         .find('a')
+                        //.children("a")
                         .attr('href');
 
                 result.description = $(element)
@@ -66,7 +67,7 @@ app.get("/scrape", function (req, res) {
 });
 
 // Route for getting all Articles from the db
-app.get('/articles', function (req, res) {
+router.get('/articles', function (req, res) {
     // Grab every document in the Articles collection
     db.Article.find({ saved: false })
         .then(function (dbArticle) {
@@ -79,15 +80,17 @@ app.get('/articles', function (req, res) {
         });
 });
 
-// Route for saving/updating an Article's associated Note
-app.get('/saved', function (req, res) {
+// Route to get save articles and render into handlebars
+router.get('/saved', function (req, res) {
     db.Article.find({ saved: true })
         .populate('notes')
-        .then(function (dbArticle) {
+        .exec(function (error, articles) {
+            res.render('saved', { articles: articles });
         });
 });
 
-app.get('/clear', function (req, res) {
+// Route to clear articles
+router.get('/clear', function (req, res) {
     db.Article.remove({})
         .then(function () {
             console.log('Article Removed');
@@ -98,19 +101,21 @@ app.get('/clear', function (req, res) {
         });
 });
 
-app.post('/articles/saved/:id', function (req, res) {
+// Route for saving/updating an Article's associated Note
+router.post('/articles/saved/:id', function (req, res) {
     db.Article.findOneAndUpdate({ _id: req.params.id }, { saved: true }).exec(
-        function (err, doc) {
+        function (err, note) {
             if (err) {
                 console.log(err);
             } else {
-                res.send(doc);
+                res.send(note);
             }
         }
     );
 });
 
-app.get('/articles/:id', function (req, res) {
+// Route for display the Note
+router.get('/articles/:id', function (req, res) {
     db.Article.findOne({ _id: req.params.id })
         .populate('note')
         .then(function (dbArticle) {
@@ -120,19 +125,20 @@ app.get('/articles/:id', function (req, res) {
             res.json(err);
         });
 });
-
-app.post('/articles/delete/:id', function (req, res) {
+// Route for deleting a Note
+router.post('/articles/delete/:id', function (req, res) {
     db.Article.findOneAndUpdate({ _id: req.params.id }, { saved: false, notes: [] }
-    ).then(function (err, doc) {
+    ).then(function (err, note) {
         if (err) {
             console.log(err);
         } else {
-            res.send(doc);
+            res.send(note);
         }
     });
 });
 
-app.post('/articles/:id', function (req, res) {
+// Route for saving a Note
+router.post('/articles/:id', function (req, res) {
     db.Note.create(req.body)
         .then(function (dbNote) {
             return db.Article.findOneAndUpdate({ _id: req.params.id }, { note: dbNote._id }, { new: true }
@@ -145,3 +151,6 @@ app.post('/articles/:id', function (req, res) {
             res.json(err);
         });
 });
+
+//EXPORT ROUTER
+module.exports = router;
